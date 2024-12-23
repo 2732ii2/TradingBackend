@@ -7,51 +7,67 @@ import cors from "cors";
 import { Server } from "socket.io";
 import cron from "node-cron";
 
-const processOrders = (orders) => {
+
+
+const processOrders = async (orders) => {
   const currentTime = new Date();
 
   // Iterate through the orders and update based on the condition
-  return orders.map(async(order) => {
-    console.log("1=>",order?._id);
-    // Calculate expiration time
-    const createdTime = new Date(order.createdAt);
-    // console.log("=>createdTime",createdTime,order?.durationUnit);
-    let expirationTime;
+  return Promise.all(
+    orders.map(async (order) => {
+      console.log(
+        "1=>",
+        order?.expirationType);
 
-    if (order.durationUnit == "minutes") {
-      console.log("1");
-      expirationTime = new Date(
-        createdTime.getTime() + order.durationValue * 60 * 1000
-      );
-    } else if (order.durationUnit =="seconds") {
-      console.log("2");
+      const createdTime = new Date(order.createdAt);
+      let expirationTime;
 
-      expirationTime = new Date(
-        createdTime.getTime() + order.durationValue * 1000
-      );
-    } else {
-      console.warn("Unsupported duration unit:", order.durationUnit);
-      return { ...order, active: false }; // Default to inactive for unsupported units
-    }
-
-    // Compare expiration time with current time
-    const isActive = expirationTime > currentTime;
-    // console.log("{ ...order, active: isActive }",{ ...order, active: isActive });
-    // Return updated object with the `active` attribute
-    const resp1=await Ordermodel.findOne({_id:order?._id});
-    // console.log("resp1",resp1,isActive);
-    if(!(resp1?.notactive) && !isActive)
-    {
-      console.log("1-");
-      const resp=await Ordermodel.updateOne({_id:order?._id},{
-      $set:{
-         notactive:true,
+      if (order.expirationType === "duration") {
+        // Handle duration-based expiration
+        if (order.durationUnit === "minutes") {
+          expirationTime = new Date(
+            createdTime.getTime() + order.durationValue * 60 * 1000
+          );
+        } else if (order.durationUnit === "seconds") {
+          expirationTime = new Date(
+            createdTime.getTime() + order.durationValue * 1000
+          );
+        } else {
+          console.warn("Unsupported duration unit:", order.durationUnit);
+          return { ...order, active: false }; // Default to inactive for unsupported units
+        }
       }
+       else if (order.expirationType == "datetime") {
+        // Handle dateTime-based expiration
+        console.log("333")
+        expirationTime = new Date(order.dateTime);
+      } else {
+        console.warn("Unsupported expiration type:", order.expirationType);
+        return { ...order, active: false }; // Default to inactive for unsupported expiration type
+      }
+
+      // Compare expiration time with current time
+      const isActive = expirationTime > currentTime;
+
+      // Check the current state in the database and update if necessary
+      const existingOrder = await Ordermodel.findOne({ _id: order?._id });
+      if (!existingOrder?.notactive && !isActive) {
+        console.log("1-");
+        const resp = await Ordermodel.updateOne(
+          { _id: order?._id },
+          {
+            $set: {
+              notactive: true,
+            },
+          }
+        );
+        console.log(resp);
+      }
+
+      // Return the updated object with the `active` attribute
+      return { ...order, active: isActive };
     })
-    console.log(resp);
-    }
-    return { ...order, active: isActive };
-  });
+  );
 };
 
 
