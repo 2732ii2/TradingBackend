@@ -85,6 +85,20 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(cors());
 
+app.get("/deletetrades",async(req,res)=>{
+  try{
+    const resp=await Ordermodel.deleteMany({});
+    console.log(resp);
+    res.json({
+      msg:"all were deleted"
+    })
+  }
+  catch(e){
+    console.log(e);
+  }
+})
+
+
 const callData=async()=>{
   const resp=await Ordermodel.find();
   return (resp);
@@ -98,9 +112,19 @@ cron.schedule("*/5 * * * * *",async () => {
   io.emit("sendingUpdatedData",{data:(await callData())});
   console.log("Updated orders:",processOrders(resp).length);
 });
-io.on("connection", (socket) => {
+io.on("connection", async(socket) => {
   console.log("New client connected:", socket.id);
   
+  socket.on("room_id",(data)=>{
+    console.log("=>room id",data?.name);
+    socket.join(data?.name);
+    console.log(`${data?.name} joined room: ${data?.name}`);
+  })
+
+  socket.on("notification",data=>{
+    console.log("notification=>",data);
+    io.to(data.room).emit("notify",{msg:data.msg})
+  })
   socket.on("recieveDataBack",async(data)=>{
     console.log(data);
     var val;
@@ -136,6 +160,7 @@ app.post('/save',  async (req, res) => {
         durationValue,
         durationUnit,
         dateTime,
+        name
       } = req.body;
   
       // Validate input
@@ -164,6 +189,7 @@ app.post('/save',  async (req, res) => {
         durationValue: expirationType === "duration" ? durationValue : undefined,
         durationUnit: expirationType === "duration" ? durationUnit : undefined,
         dateTime: expirationType === "datetime" ? dateTime : undefined,
+        name
       });
   
       // Save to database
